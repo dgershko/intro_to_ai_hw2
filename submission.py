@@ -1,10 +1,23 @@
 import random
+import math
 
 import numpy as np
 
 import Gobblet_Gobblers_Env as gge
 
 not_on_board = np.array([-1, -1])
+
+import enum
+
+class Superparams():
+    combo_weight = 3
+    eating_weight = 1
+    enemy_heuristic_weight = 1
+
+    class size_to_value(enum.Enum):
+        B = 3
+        M = 2
+        S = 1
 
 
 # agent_id is which player I am, 0 - for the first player , 1 - if second player
@@ -55,8 +68,50 @@ def dumb_heuristic2(state, agent_id):
     return sum_pawns
 
 
-def smart_heuristic(state):
-    return
+
+
+def get_unhidden_trios(state: gge.State, agent_id):
+    player_pawns = [state.player1_pawns, state.player2_pawns]
+    board = np.zeros([3,3], dtype=int)
+    for key, value in player_pawns[agent_id].items():
+        if is_hidden(state, agent_id, key) or np.array_equal(value[0], not_on_board):
+            continue
+        (x, y) = value[0]
+        board[x, y] = Superparams().size_to_value[value[1]].value
+    trios = [np.zeros(3, dtype=int), np.zeros(3, dtype=int)]
+    for i in range(3):
+        trios.append(board[i,:])
+        trios.append(board[:,i])
+        trios[0][i] = board[i,i]
+        trios[1][i] = board[i,2-i]
+    return trios
+
+
+def intermediate_heuristic(state: gge.State, agent_id):
+    # Parameters and consts
+    # power_superparam = 1  # By increasing this we're making sure the agent favors combos (eg. 2 in a row)
+    # eaten_weight_superparam = 1  # controls the weighting of eating vs getting combos
+    heuristic_value = 0
+    position_value = 0
+    eaten_value = 0
+    
+    # Sum trios values (by the formula stated in the dry section)
+    for trio in get_unhidden_trios(state, agent_id):
+        position_value += (np.count_nonzero(trio) ** Superparams().combo_weight) * np.sum(trio)
+    
+    # Sum values of enemy eaten (hidden) goblins
+    player_pawns = [state.player1_pawns, state.player2_pawns]
+    for key, value in player_pawns[1-agent_id].items():
+        if is_hidden(state, 1-agent_id, key):
+            eaten_value += Superparams().size_to_value[value[1]].value
+    
+    heuristic_value = position_value + Superparams().eating_weight * eaten_value
+    return heuristic_value
+    
+
+def smart_heuristic(state: gge.State, agent_id):
+    return intermediate_heuristic(state, agent_id) - Superparams().enemy_heuristic_weight * intermediate_heuristic(state, 1 - agent_id)
+
 
 
 # IMPLEMENTED FOR YOU - NO NEED TO CHANGE
@@ -92,10 +147,17 @@ def greedy(curr_state, agent_id, time_limit):
             max_neighbor = neighbor
     return max_neighbor[0]
 
-
 # TODO - add your code here
 def greedy_improved(curr_state, agent_id, time_limit):
-    raise NotImplementedError()
+    neighbor_list = curr_state.get_neighbors()
+    max_heuristic = -math.inf
+    max_neighbor = None
+    for neighbor in neighbor_list:
+        curr_heuristic = smart_heuristic(neighbor[1], agent_id)
+        if curr_heuristic >= max_heuristic:
+            max_heuristic = curr_heuristic
+            max_neighbor = neighbor
+    return max_neighbor[0]
 
 
 def rb_heuristic_min_max(curr_state, agent_id, time_limit):

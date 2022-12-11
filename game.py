@@ -3,6 +3,8 @@ import time
 import Gobblet_Gobblers_Env as gge
 import submission
 
+from pprint import pprint
+
 # TODO - elaborate
 time_limit = 1
 steps_limit = 100
@@ -32,6 +34,10 @@ def play_game(agent_1_str, agent_2_str):
     end_time = 0
     steps_per_game = 0
     while winner is None:
+        # state = env.get_state()
+        # pprint(state.player1_pawns)
+        # print(state.player2_pawns)
+        # input()
         if env.s.turn == 0:
             print("player 0")
             start_time = time.time()
