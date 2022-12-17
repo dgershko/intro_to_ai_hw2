@@ -27,8 +27,6 @@ and returns
 -1 if size2 > size1
 0 if size1 == size2 
 '''
-
-
 def size_cmp(size1, size2):
     if size1 == size2:
         return 0
@@ -137,7 +135,7 @@ def is_legal_step(action, curr_state):
     for key, value in pawn_list.items():
         if np.array_equal(value[0], location):
             if size_cmp(value[1], action[0][0]) >= 0:
-                print("ILLEGAL placement of pawn")
+                # print("ILLEGAL placement of pawn")
                 return False
 
     # finding current location
@@ -148,7 +146,7 @@ def is_legal_step(action, curr_state):
         for key, value in pawn_list.items():
             if np.array_equal(value[0], curr_location):
                 if size_cmp(value[1], action[0][0]) > 0:
-                    print("ILLEGAL pawn selection")
+                    # print("ILLEGAL pawn selection")
                     return False
     return True
 
