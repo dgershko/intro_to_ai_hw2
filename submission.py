@@ -88,11 +88,16 @@ def get_positional_value(state: gge.State, agent_id):
         value += (np.count_nonzero(trio) ** Superparams().combo_weight) * np.sum(trio)
     return value
 
+global calls
+calls = 0
+
 @functools.lru_cache(maxsize=256)
 def smart_heuristic(state: gge.State, agent_id):
     # # Parameters and consts
     # # power_superparam = 1  # By increasing this we're making sure the agent favors combos (eg. 2 in a row)
     # # eaten_weight_superparam = 1  # controls the weighting of eating vs getting combos
+    global calls
+    calls += 1
     heuristic_value = 0
     position_value = 0
     eaten_value = 0
@@ -160,90 +165,250 @@ def greedy_improved(curr_state, agent_id, time_limit):
 # ---------------RB MINIMAX--------------- #
 #==========================================#
 
-class Minimaxer():
-    def __init__(self, caller_agent):
-        self.agent_id = caller_agent
-        self.current_agent = caller_agent
+# class Minimaxer():
+#     def __init__(self, caller_agent):
+#         self.agent_id = caller_agent
+#         self.current_agent = caller_agent
 
-    # Get the state's value as viewed by a certain agent (min/max)
-    # The current agent doesn't affect final states
-    # The current agent does affect heuristic values
-    @functools.cache
-    def state_value(self, state: gge.State, depth):
-        match_state = gge.is_final_state(state)
-        if match_state is not None:
-            match_state = int(match_state) - 1
-            if match_state == self.agent_id:
-                return math.inf
-            elif match_state == 1 - self.agent_id:
-                return -math.inf
-            return 0
+#     # Get the state's value as viewed by a certain agent (min/max)
+#     # The current agent doesn't affect final states
+#     # The current agent does affect heuristic values
+#     @functools.cache
+#     def state_value(self, state: gge.State, depth):
+#         match_state = gge.is_final_state(state)
+#         if not match_state is None:
+#             match_state = int(match_state) - 1
+#             if match_state == self.agent_id:
+#                 return math.inf
+#             elif match_state == 1 - self.agent_id:
+#                 return -math.inf
+#             return 0
         
-        if depth == 0:
-            return smart_heuristic(state, self.agent_id)
+#         if depth == 0:
+#             return smart_heuristic(state, self.agent_id)
 
-        if self.current_agent == self.agent_id:
-            return self.min_value(state, depth)
-        else:
-            return self.max_value(state, depth)
+#         if self.current_agent == self.agent_id:
+#             return self.min_value(state, depth)
+#         else:
+#             return self.max_value(state, depth)
 
-    @functools.lru_cache(maxsize=128)
-    def max_value(self, state: gge.State, depth):
-        self.current_agent = 1 - self.current_agent
-        new_depth = depth - 1
-        value = max([self.state_value(neighbor[1], new_depth) for neighbor in state.get_neighbors()])
-        return value
+#     @functools.lru_cache(maxsize=128)
+#     def max_value(self, state: gge.State, depth):
+#         self.current_agent = 1 - self.current_agent
+#         new_depth = depth - 1
+#         value = max([self.state_value(neighbor[1], new_depth) for neighbor in state.get_neighbors()])
+#         return value
 
-    @functools.lru_cache(maxsize=128)
-    def min_value(self, state: gge.State, depth):
-        self.current_agent = 1 - self.current_agent
-        new_depth = depth - 1
-        value = min([self.state_value(neighbor[1], new_depth) for neighbor in state.get_neighbors()]) 
-        return value
+#     @functools.lru_cache(maxsize=128)
+#     def min_value(self, state: gge.State, depth):
+#         self.current_agent = 1 - self.current_agent
+#         new_depth = depth - 1
+#         value = min([self.state_value(neighbor[1], new_depth) for neighbor in state.get_neighbors()]) 
+#         return value
 
+def rb_iteration(curr_state: gge.State, agent_id, depth):
+    match_state = gge.is_final_state(curr_state)
+    if not match_state is None:
+        match_state = int(match_state) - 1
+        if match_state == agent_id:
+            return 1000000
+        elif match_state == 1 - agent_id:
+            return -1000000
+        return 0
+    
+    if depth <= 0:
+        return smart_heuristic(curr_state, agent_id)
+    
+    neighbor_list = curr_state.get_neighbors()
+    
+    if curr_state.turn == agent_id:
+        return max([rb_iteration(neighbor[1], agent_id, depth - 1) for neighbor in neighbor_list])
+    else: # enemy turn
+        return min([rb_iteration(neighbor[1], agent_id, depth - 1) for neighbor in neighbor_list])
 
-def rb_iteration(neighbor_list, agent_id, depth, child_conn):
+        
+
+def rb_iteration_wrapper(curr_state: gge.State, agent_id, depth, child_conn):
+    global calls
+    calls = 0
     begin = time.time()
-    minimaxer = Minimaxer(agent_id)
-    best_action = None
+    neighbor_list = curr_state.get_neighbors()
+    best_action = neighbor_list[0][0]
     max_neighbor_value = -math.inf
     for neighbor in neighbor_list:
-        move_value = minimaxer.state_value(neighbor[1], depth)
+        move_value = rb_iteration(neighbor[1], agent_id, depth - 1)
         if move_value > max_neighbor_value:
             best_action = neighbor[0]
             max_neighbor_value = move_value
     print(f"depth: {depth}, elapsed time: {time.time() - begin}")
+    print(f"calls: {calls}")
     child_conn.send(best_action)
 
 def rb_heuristic_min_max(curr_state: gge.State, agent_id, time_limit):
-
-    #TODO: missing default move in case of instant timeout?
     start_time = time.time()
-    neighbor_list = curr_state.get_neighbors()
-    depth = 0
-    best_action = None
+    depth = 1
     parent_conn, child_conn = multiprocessing.Pipe() # ayy lmao
     while True:
-        minimax_iteration_process = multiprocessing.Process(target=rb_iteration, args=(neighbor_list, agent_id, depth, child_conn))
-        minimax_iteration_process.start()
+        process = multiprocessing.Process(target=rb_iteration_wrapper, args=(curr_state, agent_id, depth, child_conn))
+        process.start()
         remaining_time = time_limit - (time.time() - start_time)
-        minimax_iteration_process.join(remaining_time - 0.05)
-        if minimax_iteration_process.is_alive(): # if job is still alive after the remaining time ran out, its time to /die/
+        process.join(remaining_time * 0.9)
+        if process.is_alive(): # if job is still alive after the remaining time ran out, its time to /die/
             print("timeout")
-            minimax_iteration_process.kill()
+            process.kill()
             print(f"best action: {best_action}")
             return best_action
         best_action = parent_conn.recv() # update best action after iteration is done
         depth +=1 # prepare for next iteration with more depth
     
 
-def alpha_beta(curr_state, agent_id, time_limit):
-    raise NotImplementedError()
+def alpha_beta_iteration(curr_state: gge.State, agent_id, depth, alpha, beta):
+    match_state = gge.is_final_state(curr_state)
+    if not match_state is None:
+        match_state = int(match_state) - 1
+        if match_state == agent_id:
+            return math.inf
+        elif match_state == 1 - agent_id:
+            return -math.inf
+        return 0
+    
+    if depth <= 0:
+        return smart_heuristic(curr_state, agent_id)
+    
+    neighbor_list = curr_state.get_neighbors()
 
+    if curr_state.turn == agent_id:
+        curr_max = -math.inf
+        for neighbor in neighbor_list:
+            curr_max = max(curr_max, alpha_beta_iteration(neighbor[1], agent_id, depth - 1, alpha, beta))
+            alpha = max(curr_max, alpha)
+            if curr_max >= beta:
+                return math.inf
+        return curr_max
+    else:
+        curr_min = math.inf
+        for neighbor in neighbor_list:
+            curr_min = min(curr_min, alpha_beta_iteration(neighbor[1], agent_id, depth - 1, alpha, beta))
+            beta = min(curr_min, beta)
+            if curr_min <= alpha:
+                return -math.inf
+        return curr_min
+
+def alpha_beta_iteration_wrapper(curr_state: gge.State, agent_id, depth, child_conn):
+    global calls
+    calls = 0
+    begin = time.time()
+    neighbor_list = curr_state.get_neighbors()
+    best_action = neighbor_list[0][0]
+    
+    # Check each neighbor for its value
+    curr_max = -math.inf
+    alpha = -math.inf
+    beta = math.inf
+    if depth == 0:
+        best_action = greedy_improved(curr_state, agent_id, 0)
+    else:
+        for neighbor in neighbor_list:
+            # curr_max = max(curr_max, alpha_beta_iteration(neighbor[1], agent_id, depth - 1, alpha, beta))            
+            ab_value = alpha_beta_iteration(neighbor[1], agent_id, depth - 1, alpha, beta)
+            if ab_value >= curr_max:
+                curr_max = ab_value
+                best_action = neighbor[0]
+            alpha = max(curr_max, alpha)
+    print(f"alpha beta: depth: {depth}, elapsed time: {time.time() - begin}")
+    print(f"calls: {calls}")
+    child_conn.send(best_action)
+
+    
+def alpha_beta(curr_state, agent_id, time_limit):
+    start_time = time.time()
+    depth = 1
+    best_action = None
+    parent_conn, child_conn = multiprocessing.Pipe() # ayy lmao
+    while True:
+        process = multiprocessing.Process(target=alpha_beta_iteration_wrapper, args=(curr_state, agent_id, depth, child_conn))
+        process.start()
+        remaining_time = time_limit - (time.time() - start_time)
+        process.join(remaining_time * 0.9)
+        if process.is_alive(): # if job is still alive after the remaining time ran out, its time to /die/
+            print("timeout")
+            process.kill()
+            print(f"best action: {best_action}")
+            return best_action
+        best_action = parent_conn.recv() # update best action after iteration is done
+        depth +=1 # prepare for next iteration with more depth
+
+
+def expectimax_iteration(curr_state: gge.State, agent_id, depth):
+    match_state = gge.is_final_state(curr_state)
+    if not match_state is None:
+        match_state = int(match_state) - 1
+        if match_state == agent_id:
+            return 1000000
+        elif match_state == 1 - agent_id:
+            return -1000000
+        return 0
+    
+    if depth <= 0:
+        return smart_heuristic(curr_state, agent_id)
+    
+    neighbor_list = curr_state.get_neighbors()
+    
+    if curr_state.turn == agent_id:
+        return max([expectimax_iteration(neighbor[1], agent_id, depth - 1) for neighbor in neighbor_list])
+    else: # probabilistic!
+        total_probability = 0
+        expected_value = 0
+        for neighbor in neighbor_list:
+            probability = 1
+            if neighbor[0][0] in ["S1", "S2"]:
+                probability = 2
+            if dumb_heuristic2(neighbor[1], agent_id) > dumb_heuristic2(curr_state, agent_id):  # TODO - change it if piazza says so
+                probability = 2
+            total_probability += probability
+            expectivalue =  expectimax_iteration(neighbor[1], agent_id, depth - 1)
+            expected_value += probability * expectivalue
+            # print(f">> Current value: {expectivalue}")
+
+        return expected_value/total_probability
+        
+
+def expectimax_iteration_wrapper(curr_state: gge.State, agent_id, depth, child_conn):
+    global calls
+    calls = 0
+    begin = time.time()
+    neighbor_list = curr_state.get_neighbors()
+    best_action = neighbor_list[0][0]
+    
+    # Check each neighbor for its value
+    curr_max = -math.inf
+    for neighbor in neighbor_list:
+        expecti_value = expectimax_iteration(neighbor[1], agent_id, depth - 1)
+        if expecti_value >= curr_max:
+            curr_max = expecti_value
+            best_action = neighbor[0]
+    print(f"expectimax: depth: {depth}, elapsed time: {time.time() - begin}")
+    print(f"calls: {calls}")
+    child_conn.send(best_action)
 
 def expectimax(curr_state, agent_id, time_limit):
-    raise NotImplementedError()
+    start_time = time.time()
+    depth = 1
+    best_action = None
+    parent_conn, child_conn = multiprocessing.Pipe() # ayy lmao
+    while True:
+        process = multiprocessing.Process(target=expectimax_iteration_wrapper, args=(curr_state, agent_id, depth, child_conn))
+        process.start()
+        remaining_time = time_limit - (time.time() - start_time)
+        process.join(remaining_time * 0.9)
+        if process.is_alive(): # if job is still alive after the remaining time ran out, its time to /die/
+            print("timeout")
+            process.kill()
+            print(f"best action: {best_action}")
+            return best_action
+        best_action = parent_conn.recv() # update best action after iteration is done
+        depth +=1 # prepare for next iteration with more depth
 
 # these is the BONUS - not mandatory
-def super_agent(curr_state, agent_id, time_limit):
+def super_agent(curr_state, agent_id, time_limit, heuristic_func: function):
     raise NotImplementedError()
