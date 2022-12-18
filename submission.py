@@ -202,19 +202,20 @@ class Minimaxer():
         return value
 
 
+def rb_iteration(neighbor_list, agent_id, depth, child_conn):
+    begin = time.time()
+    minimaxer = Minimaxer(agent_id)
+    best_action = None
+    max_neighbor_value = -math.inf
+    for neighbor in neighbor_list:
+        move_value = minimaxer.state_value(neighbor[1], depth)
+        if move_value > max_neighbor_value:
+            best_action = neighbor[0]
+            max_neighbor_value = move_value
+    print(f"depth: {depth}, elapsed time: {time.time() - begin}")
+    child_conn.send(best_action)
+
 def rb_heuristic_min_max(curr_state: gge.State, agent_id, time_limit):
-    def rb_iteration(neighbor_list, agent_id, depth, child_conn):
-        begin = time.time()
-        minimaxer = Minimaxer(agent_id)
-        best_action = None
-        max_neighbor_value = -math.inf
-        for neighbor in neighbor_list:
-            move_value = minimaxer.state_value(neighbor[1], depth)
-            if move_value > max_neighbor_value:
-                best_action = neighbor[0]
-                max_neighbor_value = move_value
-        print(f"depth: {depth}, elapsed time: {time.time() - begin}")
-        child_conn.send(best_action)
 
     #TODO: missing default move in case of instant timeout?
     start_time = time.time()
