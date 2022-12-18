@@ -409,6 +409,102 @@ def expectimax(curr_state, agent_id, time_limit):
         best_action = parent_conn.recv() # update best action after iteration is done
         depth +=1 # prepare for next iteration with more depth
 
-# these is the BONUS - not mandatory
-def super_agent(curr_state, agent_id, time_limit, heuristic_func: function):
-    raise NotImplementedError()
+# these is the BONUS - not mandatory    
+class SuperAgent():
+    move_to_index = {
+            ('B1', 0): 0, ('B2', 0): 1, ('M1', 0): 2, ('M2', 0): 3, ('S1', 0): 4, ('S2', 0): 5,
+            ('B1', 1): 6, ('B2', 1): 7, ('M1', 1): 8, ('M2', 1): 9, ('S1', 1): 10, ('S2', 1): 11,
+            ('B1', 2): 12, ('B2', 2): 13, ('M1', 2): 14, ('M2', 2): 15, ('S1', 2): 16, ('S2', 2): 17,
+            ('B1', 3): 18, ('B2', 3): 19, ('M1', 3): 20, ('M2', 3): 21, ('S1', 3): 22, ('S2', 3): 23,
+            ('B1', 4): 24, ('B2', 4): 25, ('M1', 4): 26, ('M2', 4): 27, ('S1', 4): 28, ('S2', 4): 29,
+            ('B1', 5): 30, ('B2', 5): 31, ('M1', 5): 32, ('M2', 5): 33, ('S1', 5): 34, ('S2', 5): 35,
+            ('B1', 6): 36, ('B2', 6): 37, ('M1', 6): 38, ('M2', 6): 39, ('S1', 6): 40, ('S2', 6): 41,
+            ('B1', 7): 42, ('B2', 7): 43, ('M1', 7): 44, ('M2', 7): 45, ('S1', 7): 46, ('S2', 7): 47,
+            ('B1', 8): 48, ('B2', 8): 49, ('M1', 8): 50, ('M2', 8): 51, ('S1', 8): 52, ('S2', 8): 53}
+    index_to_move = []
+
+    def __init__(self, agent_id, heuristic: callable, initial_state: gge.State, time_limit):
+        self.heuristic = heuristic
+        self.agent_id = agent_id
+        self.time_limit = time_limit
+        self.initial_state = initial_state
+        self.neighbor_list = initial_state.get_neighbors()
+    
+    def super_agent_iteration(self, curr_state: gge.State, depth, alpha, beta):
+        match_state = gge.is_final_state(curr_state)
+        if not match_state is None:
+            match_state = int(match_state) - 1
+            if match_state == self.agent_id:
+                return math.inf
+            elif match_state == 1 - self.agent_id:
+                return -math.inf
+            return 0
+        
+        if depth <= 0:
+            return self.heuristic(curr_state, self.agent_id)
+        
+        neighbor_list = curr_state.get_neighbors()
+
+        if curr_state.turn == self.agent_id:
+            curr_max = -math.inf
+            for neighbor in neighbor_list:
+                curr_max = max(curr_max, self.super_agent_iteration(neighbor[1], self.agent_id, depth - 1, alpha, beta))
+                alpha = max(curr_max, alpha)
+                if curr_max >= beta:
+                    return math.inf
+            return curr_max
+        else:
+            curr_min = math.inf
+            for neighbor in neighbor_list:
+                curr_min = min(curr_min, self.super_agent_iteration(neighbor[1], self.agent_id, depth - 1, alpha, beta))
+                beta = min(curr_min, beta)
+                if curr_min <= alpha:
+                    return -math.inf
+            return curr_min
+
+    def super_agent_iteration_wrapper(self, depth):
+        best_action = self.neighbor_list[0][0]
+        if depth == 1:
+            best_action = max([self.heuristic(neighbor, self.agent_id) for neighbor in self.neighbor_list])
+        else:
+            curr_max = -math.inf
+            alpha = -math.inf
+            beta = math.inf
+            for neighbor in self.neighbor_list:
+                ab_value = alpha_beta_iteration(neighbor[1], self.agent_id, depth - 1, alpha, beta)
+                if ab_value >= curr_max:
+                    curr_max = ab_value
+                    best_action = neighbor[0]
+                alpha = max(curr_max, alpha)
+        print(best_action)
+        self.best_action[depth] = self.moves[best_action]
+    
+    def run_agent(self):
+        self.best_action = multiprocessing.Array('i', [0] * 20) # Solve shared value issues!
+        depth = 1
+        while 1:
+            process = multiprocessing.Process(target=self.super_agent_iteration_wrapper, args=[depth])
+            process.start()
+            process.join(self.time_limit * 0.9)
+            if process.is_alive():
+                process.kill()
+                action_index = None
+                print([action for action in self.best_action])
+                exit()
+                for action in self.best_action:
+                    if action is None:
+                        action_taken = self.moves.keys()[action_index]
+                        print(f"timeout, action taken: {action_taken}")
+                        return action
+                    action_index = action
+            depth += 1
+
+
+
+class SuperAgentFactory():
+    def __init__(self, heuristic_func: callable):
+        self.heuristic_func = heuristic_func
+
+    def super_agent(self, curr_state, agent_id, time_limit):
+        agent = SuperAgent(agent_id, self.heuristic_func, curr_state, time_limit)
+        return agent.run_agent()
