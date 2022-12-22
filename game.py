@@ -3,10 +3,8 @@ import time
 import Gobblet_Gobblers_Env as gge
 import submission
 
-from pprint import pprint
-
 # TODO - elaborate
-time_limit = 5
+time_limit = 80
 steps_limit = 100
 
 agents = {
@@ -34,10 +32,6 @@ def play_game(agent_1_str, agent_2_str):
     end_time = 0
     steps_per_game = 0
     while winner is None:
-        # state = env.get_state()
-        # pprint(state.player1_pawns)
-        # print(state.player2_pawns)
-        # input()
         if env.s.turn == 0:
             print("player 0")
             start_time = time.time()
@@ -60,6 +54,7 @@ def play_game(agent_1_str, agent_2_str):
             if chosen_step is None:
                 continue
             action = chosen_step[0], int(chosen_step[1])
+
             if (end_time - start_time) > time_limit and (agent_2_str in ["minimax", "alpha_beta", "expectimax"]):
                 raise RuntimeError("Agent used too much time!")
             env.step(action)
@@ -100,6 +95,7 @@ def play_tournament(agent_1_str, agent_2_str, num_of_games):
         score[int(real_tmp_score)] = score[int(real_tmp_score)] + 1
 
 
-        print("ties: ", (score[0] / (num_of_games*2)) * 100, "% ", agent_1_str, "player1 wins: ", (score[1] / (num_of_games*2)) * 100,
-              "% ", agent_2_str, "player2 wins: ", (score[2] / (num_of_games*2)) * 100)
+    print("ties: ", (score[0] / (num_of_games*2)) * 100, "% ", agent_1_str, "player1 wins: ", (score[1] / (num_of_games*2)) * 100,
+          "% ", agent_2_str, "player2 wins: ", (score[2] / (num_of_games*2)) * 100)
+
     print("")
