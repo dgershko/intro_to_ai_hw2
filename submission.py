@@ -3,6 +3,8 @@ import math
 import time
 import multiprocessing
 import functools
+import threading
+import sys
 
 import numpy as np
 
@@ -295,8 +297,6 @@ def alpha_beta_iteration(curr_state: gge.State, agent_id, depth, alpha, beta):
         return curr_min
 
 def alpha_beta_iteration_wrapper(curr_state: gge.State, agent_id, depth, child_conn):
-    global calls
-    calls = 0
     begin = time.time()
     neighbor_list = curr_state.get_neighbors()
     best_action = neighbor_list[0][0]
@@ -316,7 +316,6 @@ def alpha_beta_iteration_wrapper(curr_state: gge.State, agent_id, depth, child_c
                 best_action = neighbor[0]
             alpha = max(curr_max, alpha)
     print(f"alpha beta: depth: {depth}, elapsed time: {time.time() - begin}")
-    print(f"calls: {calls}")
     child_conn.send(best_action)
 
     
@@ -431,6 +430,8 @@ class SuperAgent():
         self.neighbor_list = initial_state.get_neighbors()
     
     def super_agent_iteration(self, curr_state: gge.State, depth, alpha, beta):
+        if self.stop_event.is_set():
+            sys.exit()
         match_state = gge.is_final_state(curr_state)
         if not match_state is None:
             match_state = int(match_state) - 1
@@ -448,7 +449,7 @@ class SuperAgent():
         if curr_state.turn == self.agent_id:
             curr_max = -math.inf
             for neighbor in neighbor_list:
-                curr_max = max(curr_max, self.super_agent_iteration(neighbor[1], self.agent_id, depth - 1, alpha, beta))
+                curr_max = max(curr_max, self.super_agent_iteration(neighbor[1], depth - 1, alpha, beta))
                 alpha = max(curr_max, alpha)
                 if curr_max >= beta:
                     return math.inf
@@ -456,49 +457,50 @@ class SuperAgent():
         else:
             curr_min = math.inf
             for neighbor in neighbor_list:
-                curr_min = min(curr_min, self.super_agent_iteration(neighbor[1], self.agent_id, depth - 1, alpha, beta))
+                curr_min = min(curr_min, self.super_agent_iteration(neighbor[1], depth - 1, alpha, beta))
                 beta = min(curr_min, beta)
                 if curr_min <= alpha:
                     return -math.inf
             return curr_min
 
-    def super_agent_iteration_wrapper(self, depth):
-        best_action = self.neighbor_list[0][0]
-        if depth == 1:
-            best_action = max([self.heuristic(neighbor, self.agent_id) for neighbor in self.neighbor_list])
-        else:
+    def super_agent_iteration_wrapper(self):
+        depth = 1
+        while not self.stop_event.is_set():
+            iteration_start = time.time()
+            iteration_best_action = None
             curr_max = -math.inf
             alpha = -math.inf
             beta = math.inf
-            for neighbor in self.neighbor_list:
-                ab_value = alpha_beta_iteration(neighbor[1], self.agent_id, depth - 1, alpha, beta)
-                if ab_value >= curr_max:
-                    curr_max = ab_value
-                    best_action = neighbor[0]
-                alpha = max(curr_max, alpha)
-        print(best_action)
-        self.best_action[depth] = self.moves[best_action]
+            if depth == 1:
+                for neighbour in self.neighbor_list:
+                    action_value = self.heuristic(neighbour[1], self.agent_id)
+                    if action_value >= curr_max:
+                        curr_max = action_value
+                        iteration_best_action = neighbour[0]
+            else:
+                for neighbor in self.neighbor_list:
+                    action_value = self.super_agent_iteration(neighbor[1], depth - 1, alpha, beta)
+                    if action_value >= curr_max:
+                        curr_max = action_value
+                        iteration_best_action = neighbor[0]
+                    alpha = max(curr_max, alpha)
+            self.best_action = iteration_best_action
+            print(f"reached depth: {depth}, iteration took: {time.time() - iteration_start}")
+            depth += 1
+        sys.exit()
     
     def run_agent(self):
-        self.best_action = multiprocessing.Array('i', [0] * 20) # Solve shared value issues!
-        depth = 1
-        while 1:
-            process = multiprocessing.Process(target=self.super_agent_iteration_wrapper, args=[depth])
-            process.start()
-            process.join(self.time_limit * 0.9)
-            if process.is_alive():
-                process.kill()
-                action_index = None
-                print([action for action in self.best_action])
-                exit()
-                for action in self.best_action:
-                    if action is None:
-                        action_taken = self.moves.keys()[action_index]
-                        print(f"timeout, action taken: {action_taken}")
-                        return action
-                    action_index = action
-            depth += 1
-
+        self.stop_event = threading.Event()
+        start_time = time.time()
+        self.best_action = None
+        worker_thread = threading.Thread(target=self.super_agent_iteration_wrapper)
+        worker_thread.start()
+        remaining_time = self.time_limit - (time.time() - start_time)
+        worker_thread.join(remaining_time * 0.97)
+        if worker_thread.is_alive():
+            self.stop_event.set()
+        print(self.best_action)
+        return self.best_action
 
 
 class SuperAgentFactory():

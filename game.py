@@ -6,7 +6,7 @@ import submission
 from pprint import pprint
 
 # TODO - elaborate
-time_limit = 1
+time_limit = 5
 steps_limit = 100
 
 agents = {
