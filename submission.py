@@ -408,6 +408,119 @@ def expectimax(curr_state, agent_id, time_limit):
         best_action = parent_conn.recv() # update best action after iteration is done
         depth +=1 # prepare for next iteration with more depth
 
+
+
+
+
+def get_neighbors_super(state: gge.State):
+    return state.get_neighbors()
+    def size_cmp(size1, size2):
+        if size1 == size2:
+            return 0
+        if size1 == "B":
+            return 1
+        if size1 == "S":
+            return -1
+        if size2 == "S":
+            return 1
+        else:
+            return -1
+
+    def find_curr_location(curr_state, pawn, player):
+        if player == 0:
+            for pawn_key, pawn_value in curr_state.player1_pawns.items():
+                if pawn_key == pawn:
+                    return pawn_value[0]
+        else:
+            for pawn_key, pawn_value in curr_state.player2_pawns.items():
+                if pawn_key == pawn:
+                    return pawn_value[0]
+
+    action_to_direction = {
+        0: np.array([0, 0]),
+        1: np.array([0, 1]),
+        2: np.array([0, 2]),
+        3: np.array([1, 0]),
+        4: np.array([1, 1]),
+        5: np.array([1, 2]),
+        6: np.array([2, 0]),
+        7: np.array([2, 1]),
+        8: np.array([2, 2]),
+    }
+
+    def is_legal_step(action, curr_state: gge.State):
+        pawn_list = {
+            "agent1_big1": [curr_state.player1_pawns["B1"][0], "B"],
+            "agent1_big2": [curr_state.player1_pawns["B2"][0], "B"],
+            "agent1_medium1": [curr_state.player1_pawns["M1"][0], "M"],
+            "agent1_medium2": [curr_state.player1_pawns["M2"][0], "M"],
+            "agent1_small1": [curr_state.player1_pawns["S1"][0], "S"],
+            "agent1_small2": [curr_state.player1_pawns["S2"][0], "S"],
+            "agent2_big1": [curr_state.player2_pawns["B1"][0], "B"],
+            "agent2_big2": [curr_state.player2_pawns["B2"][0], "B"],
+            "agent2_medium1": [curr_state.player2_pawns["M1"][0], "M"],
+            "agent2_medium2": [curr_state.player2_pawns["M2"][0], "M"],
+            "agent2_small1": [curr_state.player2_pawns["S1"][0], "S"],
+            "agent2_small2": [curr_state.player2_pawns["S2"][0], "S"]
+        }
+        location = action_to_direction[action[1]]
+        for _, value in pawn_list.items():
+            if np.array_equal(value[0], location):
+                if size_cmp(value[1], action[0][0]) >= 0:
+                    # print("ILLEGAL placement of pawn")
+                    return False
+
+        # finding current location
+        curr_location = find_curr_location(curr_state, action[0], curr_state.turn)
+
+        # check that the pawn is not under another pawn - relevant only to small and medium
+        if action[0][0] != "B" and not np.array_equal(curr_location, not_on_board):
+            for key, value in pawn_list.items():
+                if np.array_equal(value[0], curr_location):
+                    if size_cmp(value[1], action[0][0]) > 0:
+                        # print("ILLEGAL pawn selection")
+                        return False
+        return True
+    
+    
+    # Counting call count
+    if not get_neighbors_super.call_count:
+        get_neighbors_super.call_count = 0
+    get_neighbors_super.call_count += 1
+    
+    # Checking possible neighbors according to the current turn (neglecting smaller ones on earlier turns)
+    if get_neighbors_super.call_count <= 3:
+        pawns = ["B1", "B2", "M1"]
+    elif get_neighbors_super.call_count <= 4:
+        pawns = ["B1", "B2", "M1", "M2"]
+    elif get_neighbors_super.call_count <= 6:
+        pawns = ["B1", "B2", "M1", "M2", "S1"]
+    else:
+        pawns = ["B1", "B2", "M1", "M2", "S1", "S2"]
+    # pawns = ["B1", "B2", "M1", "M2", "S1", "S2"]
+        
+    # TODO remember to check if dry_action returned None
+    neighbor_list = []
+    # all the pawns we can select
+    # locations (it's just 0 to 8  so I will use a simple loop)
+    for i in range(9):
+        for pawn in pawns:
+            next_state = gge.State()
+            next_state.insert_copy(state)
+            # tmp_neighbor = self.dry_step((pawn, i), state)
+            action = (pawn, i)
+            if not is_legal_step(action, state):
+                continue
+            if state.turn == 0:
+                next_state.player1_pawns[action[0]] = (action_to_direction[action[1]], action[0][0])
+            else:
+                next_state.player2_pawns[action[0]] = (action_to_direction[action[1]], action[0][0])
+
+            next_state.turn = (next_state.turn + 1) % 2
+            neighbor_list.append((action, next_state))
+
+    return neighbor_list
+get_neighbors_super.call_count = 0
 # these is the BONUS - not mandatory    
 class SuperAgent():
     move_to_index = {
@@ -427,7 +540,7 @@ class SuperAgent():
         self.agent_id = agent_id
         self.time_limit = time_limit
         self.initial_state = initial_state
-        self.neighbor_list = initial_state.get_neighbors()
+        self.neighbor_list = get_neighbors_super(initial_state)
     
     def super_agent_iteration(self, curr_state: gge.State, depth, alpha, beta):
         if self.stop_event.is_set():
@@ -444,7 +557,8 @@ class SuperAgent():
         if depth <= 0:
             return self.heuristic(curr_state, self.agent_id)
         
-        neighbor_list = curr_state.get_neighbors()
+        # neighbor_list = curr_state.get_neighbors()
+        neighbor_list = get_neighbors_super(curr_state)
 
         if curr_state.turn == self.agent_id:
             curr_max = -math.inf
@@ -496,7 +610,7 @@ class SuperAgent():
         worker_thread = threading.Thread(target=self.super_agent_iteration_wrapper)
         worker_thread.start()
         remaining_time = self.time_limit - (time.time() - start_time)
-        worker_thread.join(remaining_time * 0.97)
+        worker_thread.join(remaining_time - 0.1)
         if worker_thread.is_alive():
             self.stop_event.set()
         print(self.best_action)
