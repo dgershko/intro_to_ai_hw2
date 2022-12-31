@@ -58,6 +58,18 @@ def is_hidden(state, agent_id, pawn):
     return False
 
 
+# checks if a pawn is over another pawn
+def is_hiding(state, agent_id, pawn):
+    pawn_location = gge.find_curr_location(state, pawn, agent_id)
+    for key, value in state.player1_pawns.items():
+        if np.array_equal(value[0], pawn_location) and gge.size_cmp(value[1], state.player1_pawns[pawn][1]) == -1:
+            return True
+    for key, value in state.player2_pawns.items():
+        if np.array_equal(value[0], pawn_location) and gge.size_cmp(value[1], state.player1_pawns[pawn][1]) == -1:
+            return True
+    return False
+
+
 # count the numbers of pawns that i have that aren't hidden
 def dumb_heuristic2(state, agent_id):
     sum_pawns = 0
@@ -378,7 +390,7 @@ def expectimax_iteration(stop_event: threading.Event, curr_state: gge.State, age
             probability = 1
             if neighbor[0][0] in ["S1", "S2"]:
                 probability = 2
-            if dumb_heuristic2(neighbor[1], agent_id) > dumb_heuristic2(curr_state, agent_id):  # TODO - change it if piazza says so
+            if is_hiding(neighbor[1], neighbor[0][0], agent_id):
                 probability = 2
             total_probability += probability
             expectivalue =  expectimax_iteration(stop_event, neighbor[1], agent_id, depth - 1)
