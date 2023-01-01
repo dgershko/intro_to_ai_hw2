@@ -16,8 +16,8 @@ import enum
 
 class Superparams():
     combo_weight = 3
-    eating_weight = 1
-    enemy_heuristic_weight = 1
+    eating_weight = 5
+    enemy_heuristic_weight = 3
 
     class size_to_value(enum.Enum):
         B = 3
@@ -91,7 +91,7 @@ def run_with_timer(func, time_limit, curr_state, agent_id):
     worker_thread = threading.Thread(target=func, args=[stop_event, curr_state, agent_id, best_action])
     worker_thread.start()
     remaining_time = time_limit - (time.time() - start_time)
-    worker_thread.join(remaining_time - 0.1)
+    worker_thread.join(remaining_time - 0.2)
     if worker_thread.is_alive():
         stop_event.set()
     return best_action[0]
@@ -113,22 +113,16 @@ def get_positional_value(state: gge.State, agent_id):
         value += (np.count_nonzero(trio) ** Superparams().combo_weight) * np.sum(trio)
     return value
 
-global calls
-calls = 0
 
-@functools.lru_cache(maxsize=256)
 def smart_heuristic(state: gge.State, agent_id):
     # # Parameters and consts
     # # power_superparam = 1  # By increasing this we're making sure the agent favors combos (eg. 2 in a row)
     # # eaten_weight_superparam = 1  # controls the weighting of eating vs getting combos
-    global calls
-    calls += 1
     heuristic_value = 0
     position_value = 0
     eaten_value = 0
 
-    #TODO: make these three calculations parrallel?
-    position_value = get_positional_value(state, agent_id) - get_positional_value(state, 1 - agent_id)
+    position_value = get_positional_value(state, agent_id)
     
     # Sum values of enemy eaten (hidden) goblins
     player_pawns = [state.player1_pawns, state.player2_pawns]
@@ -230,38 +224,9 @@ def rb_iteration_wrapper(stop_event: threading.Event, curr_state: gge.State, age
         best_action[0] = iteration_best_action
         depth += 1
     sys.exit()
-    # global calls
-    # calls = 0
-    # begin = time.time()
-    # neighbor_list = curr_state.get_neighbors()
-    # best_action = neighbor_list[0][0]
-    # max_neighbor_value = -10000
-    # for neighbor in neighbor_list:
-    #     move_value = rb_iteration(neighbor[1], agent_id, depth - 1)
-    #     if move_value > max_neighbor_value:
-    #         best_action = neighbor[0]
-    #         max_neighbor_value = move_value
-    # print(f"depth: {depth}, elapsed time: {time.time() - begin}")
-    # print(f"calls: {calls}")
-    # child_conn.send(best_action)
 
 def rb_heuristic_min_max(curr_state: gge.State, agent_id, time_limit):
     return run_with_timer(rb_iteration_wrapper, time_limit, curr_state, agent_id)
-    # start_time = time.time()
-    # depth = 1
-    # parent_conn, child_conn = multiprocessing.Pipe() # ayy lmao
-    # while True:
-    #     process = multiprocessing.Process(target=rb_iteration_wrapper, args=(curr_state, agent_id, depth, child_conn))
-    #     process.start()
-    #     remaining_time = time_limit - (time.time() - start_time)
-    #     process.join(remaining_time * 0.9)
-    #     if process.is_alive(): # if job is still alive after the remaining time ran out, its time to /die/
-    #         print("timeout")
-    #         process.kill()
-    #         print(f"best action: {best_action}")
-    #         return best_action
-    #     best_action = parent_conn.recv() # update best action after iteration is done
-    #     depth +=1 # prepare for next iteration with more depth
     
 
 def alpha_beta_iteration(stop_event: threading.Event, curr_state: gge.State, agent_id, depth, alpha, beta):
@@ -322,46 +287,10 @@ def alpha_beta_iteration_wrapper(stop_event: threading.Event, curr_state: gge.St
         best_action[0] = iteration_best_action
         depth += 1
     sys.exit()
-    # begin = time.time()
-    # neighbor_list = curr_state.get_neighbors()
-    # best_action = neighbor_list[0][0]
-    
-    # # Check each neighbor for its value
-    # curr_max = -10000
-    # alpha = -10000
-    # beta = 10000
-    # if depth == 0:
-    #     best_action = greedy_improved(curr_state, agent_id, 0)
-    # else:
-    #     for neighbor in neighbor_list:
-    #         # curr_max = max(curr_max, alpha_beta_iteration(neighbor[1], agent_id, depth - 1, alpha, beta))            
-    #         ab_value = alpha_beta_iteration(neighbor[1], agent_id, depth - 1, alpha, beta)
-    #         if ab_value >= curr_max:
-    #             curr_max = ab_value
-    #             best_action = neighbor[0]
-    #         alpha = max(curr_max, alpha)
-    # print(f"alpha beta: depth: {depth}, elapsed time: {time.time() - begin}")
-    # child_conn.send(best_action)
 
     
 def alpha_beta(curr_state, agent_id, time_limit):
     return run_with_timer(alpha_beta_iteration_wrapper, time_limit, curr_state, agent_id)
-    # start_time = time.time()
-    # depth = 1
-    # best_action = None
-    # parent_conn, child_conn = multiprocessing.Pipe() # ayy lmao
-    # while True:
-    #     process = multiprocessing.Process(target=alpha_beta_iteration_wrapper, args=(curr_state, agent_id, depth, child_conn))
-    #     process.start()
-    #     remaining_time = time_limit - (time.time() - start_time)
-    #     process.join(remaining_time * 0.9)
-    #     if process.is_alive(): # if job is still alive after the remaining time ran out, its time to /die/
-    #         print("timeout")
-    #         process.kill()
-    #         print(f"best action: {best_action}")
-    #         return best_action
-    #     best_action = parent_conn.recv() # update best action after iteration is done
-    #     depth +=1 # prepare for next iteration with more depth
 
 
 def expectimax_iteration(stop_event: threading.Event, curr_state: gge.State, agent_id, depth):
@@ -400,17 +329,6 @@ def expectimax_iteration(stop_event: threading.Event, curr_state: gge.State, age
         
 
 def expectimax_iteration_wrapper(stop_event: threading.Event, curr_state: gge.State, agent_id, best_action):
-    # neighbor_list = curr_state.get_neighbors()
-    
-    # # Check each neighbor for its value
-    # curr_max = -10000
-    # for neighbor in neighbor_list:
-    #     expecti_value = expectimax_iteration(neighbor[1], agent_id, depth - 1)
-    #     if expecti_value >= curr_max:
-    #         curr_max = expecti_value
-    #         best_action = neighbor[0]
-    # print(f"expectimax: depth: {depth}, elapsed time: {time.time() - begin}")
-    # print(f"calls: {calls}")
     neighbor_list = curr_state.get_neighbors()
     depth = 1
     while not stop_event.is_set():
@@ -436,15 +354,19 @@ def expectimax(curr_state, agent_id, time_limit):
     return run_with_timer(expectimax_iteration_wrapper, time_limit, curr_state, agent_id)
 
 
-# these is the BONUS - not mandatory    
+# these is the BONUS - not mandatory 
+# selected hyperparameters:
+# size_to_val = {'B': 7, 'M': 6, 'S': 5}
+# eat = 4
+# enemy = 0
+# combo = 2   
 @functools.cache
 def super_get_positional_value(pawn_tuple): # pawn tuple: [(x,y,B)]
     size_to_value = {
-        'B': 3,
-        'M': 2,
-        'S': 1
+        'B': 7,
+        'M': 6,
+        'S': 5
     }
-    combo_mult = 3
     # row 0, 1, 2, col 0, 1, 2, diag 0, 1
     trios = [[], [], [], [], [], [], [], []]
     for pawn in pawn_tuple:
@@ -458,17 +380,14 @@ def super_get_positional_value(pawn_tuple): # pawn tuple: [(x,y,B)]
         if pawn[0] == (2 - pawn[1]):
             trios[7].append(value)
 
-    return sum([sum(trio) * (len(trio) ** combo_mult) for trio in trios])
+    return sum([sum(trio) * (len(trio) ** 2) for trio in trios])
 
 def super_heuristic(state: gge.State, agent_id):
     size_to_value = {
-        'B': 3,
-        'M': 2,
-        'S': 1
+        'B': 7,
+        'M': 6,
+        'S': 5
     }
-    enemy_mult = 3
-    eat_mult = 3
-
     position_value = 0
     eaten_value = 0
 
@@ -476,7 +395,7 @@ def super_heuristic(state: gge.State, agent_id):
         tuple((value[0][0], value[0][1], value[1]) for key, value in state.player1_pawns.items() if not is_hidden(state, 0, key)),
         tuple((value[0][0], value[0][1], value[1]) for key, value in state.player2_pawns.items() if not is_hidden(state, 1, key))
     ]
-    position_value = super_get_positional_value(pawns[agent_id]) - enemy_mult * super_get_positional_value(pawns[1 - agent_id])
+    position_value = super_get_positional_value(pawns[agent_id])
 
     # Sum values of enemy eaten (hidden) goblins
     player_pawns = [state.player1_pawns, state.player2_pawns]
@@ -484,7 +403,7 @@ def super_heuristic(state: gge.State, agent_id):
         if is_hidden(state, 1-agent_id, key):
             eaten_value += size_to_value[value[1]]
 
-    heuristic_value = position_value + eat_mult * eaten_value
+    heuristic_value = position_value + 4 * eaten_value
     return heuristic_value
 
 def super_agent_iteration(stop_event, curr_state: gge.State, agent_id, depth, alpha, beta):
