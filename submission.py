@@ -363,9 +363,9 @@ def expectimax(curr_state, agent_id, time_limit):
 @functools.cache
 def super_get_positional_value(pawn_tuple): # pawn tuple: [(x,y,B)]
     size_to_value = {
-        'B': 7,
-        'M': 6,
-        'S': 5
+        'B': 3,
+        'M': 2,
+        'S': 1
     }
     # row 0, 1, 2, col 0, 1, 2, diag 0, 1
     trios = [[], [], [], [], [], [], [], []]
@@ -380,13 +380,13 @@ def super_get_positional_value(pawn_tuple): # pawn tuple: [(x,y,B)]
         if pawn[0] == (2 - pawn[1]):
             trios[7].append(value)
 
-    return sum([sum(trio) * (len(trio) ** 2) for trio in trios])
+    return sum([sum(trio) * (len(trio) ** 3) for trio in trios])
 
 def super_heuristic(state: gge.State, agent_id):
     size_to_value = {
-        'B': 7,
-        'M': 6,
-        'S': 5
+        'B': 3,
+        'M': 2,
+        'S': 1
     }
     position_value = 0
     eaten_value = 0
@@ -395,7 +395,7 @@ def super_heuristic(state: gge.State, agent_id):
         tuple((value[0][0], value[0][1], value[1]) for key, value in state.player1_pawns.items() if not is_hidden(state, 0, key)),
         tuple((value[0][0], value[0][1], value[1]) for key, value in state.player2_pawns.items() if not is_hidden(state, 1, key))
     ]
-    position_value = super_get_positional_value(pawns[agent_id])
+    position_value = super_get_positional_value(pawns[agent_id]) - 3 * super_get_positional_value(pawns[1-agent_id])
 
     # Sum values of enemy eaten (hidden) goblins
     player_pawns = [state.player1_pawns, state.player2_pawns]
@@ -403,7 +403,7 @@ def super_heuristic(state: gge.State, agent_id):
         if is_hidden(state, 1-agent_id, key):
             eaten_value += size_to_value[value[1]]
 
-    heuristic_value = position_value + 4 * eaten_value
+    heuristic_value = position_value + 5 * eaten_value
     return heuristic_value
 
 def super_agent_iteration(stop_event, curr_state: gge.State, agent_id, depth, alpha, beta):
